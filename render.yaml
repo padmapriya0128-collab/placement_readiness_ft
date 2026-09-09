@@ -1,0 +1,41 @@
+# Render Blueprint Configuration File for Placement Readiness Analyzer
+
+services:
+  # 1. Backend Express API Service
+  - type: web
+    name: placement-readiness-backend
+    env: node
+    region: singapore
+    plan: free
+    rootDir: Placement-Readinessb
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+
+  # 2. Frontend React / Vite Express Web Application
+  - type: web
+    name: placement-readiness-frontend
+    env: node
+    region: singapore
+    plan: free
+    rootDir: placement
+    buildCommand: npm install && npm run build
+    startCommand: node dist/server.cjs
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: placement-readiness-backend
+          property: host

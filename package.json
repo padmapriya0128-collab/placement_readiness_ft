@@ -1,0 +1,14 @@
+{
+  "name": "placement-analyzer-root",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Root workspace for Placement Analyzer",
+  "scripts": {
+    "dev": "npx -y concurrently \"cd Placement-Readinessb && npm run dev\" \"cd placement && npm run dev\"",
+    "dev:frontend": "cd placement && npm run dev",
+    "dev:backend": "cd Placement-Readinessb && npm run dev",
+    "build": "cd Placement-Readinessb && npm install && cd ../placement && npm install && npm run build",
+    "start": "npx -y concurrently \"cd Placement-Readinessb && npm start\" \"cd placement && npm start\"",
+    "start:backend": "cd Placement-Readinessb && npm start"
+  }
+}
