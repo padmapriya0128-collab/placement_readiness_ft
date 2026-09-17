@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Placement Readiness Analyzer",
+  "description": "A comprehensive placement analytics dashboard designed for students, faculty, and placement coordinators to measure, track, and optimize student placement readiness.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
