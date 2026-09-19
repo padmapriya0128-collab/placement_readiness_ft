@@ -11,6 +11,7 @@ const facultySchema = new mongoose.Schema({
   department: { type: String, default: "AI&DS", trim: true },
   phone: { type: String, default: "" },
   role: { type: String, default: "Faculty" }, // "Faculty" or "Placement Faculty"
+  emailVerified: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true }
 }, {
   timestamps: true

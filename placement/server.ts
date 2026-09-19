@@ -3,13 +3,14 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
 import { ObjectId } from 'mongodb';
 import { connectToMongoDB, inMemoryDB } from './server/mongo.js';
 import { sendPlacementOpportunityEmail, sendVerificationOTPEmail } from './server/emailService.js';
 
 dotenv.config();
 
-const serverOtpStore = new Map<string, { code: string; expiresAt: number }>();
+const serverOtpStore = new Map<string, { code: string; expiresAt: number; user?: any; role?: string; token?: string }>();
 
 async function startServer() {
   const app = express();
@@ -389,15 +390,40 @@ async function startServer() {
   // Students Endpoints
   app.get('/api/students', async (req, res) => {
     try {
+      let authUser: any = null;
+      let token = req.headers.authorization;
+      if (token) {
+        if (token.startsWith('Bearer ')) token = token.slice(7).trim();
+        try {
+          authUser = jwt.verify(token, process.env.JWT_SECRET || 'secret_key');
+        } catch (e) {}
+      }
+
       const uploadedBy = (req.query.uploadedBy || req.query.facultyEmail) as string;
-      const filter = uploadedBy ? { uploadedBy: { $regex: new RegExp(`^${uploadedBy.trim()}$`, 'i') } } : {};
+      let filter: any = {};
+
+      if (authUser && authUser.role === 'Faculty') {
+        const facEmail = authUser.email || authUser.id;
+        filter = {
+          $or: [
+            { uploadedBy: { $regex: new RegExp(`^${facEmail}$`, 'i') } },
+            { facultyId: authUser.id }
+          ]
+        };
+      } else if (uploadedBy) {
+        filter = { uploadedBy: { $regex: new RegExp(`^${uploadedBy.trim()}$`, 'i') } };
+      }
+
       if (db) {
         const students = await db.collection('students').find(filter).toArray();
         return res.json(students);
       }
       const list = inMemoryDB.students || [];
-      if (uploadedBy) {
-        return res.json(list.filter(s => (s as any).uploadedBy?.toLowerCase() === uploadedBy.toLowerCase()));
+      if (filter.$or) {
+        const email = (authUser.email || authUser.id || '').toLowerCase();
+        return res.json(list.filter((s: any) => s.uploadedBy?.toLowerCase() === email || s.facultyId === authUser.id));
+      } else if (uploadedBy) {
+        return res.json(list.filter((s: any) => s.uploadedBy?.toLowerCase() === uploadedBy.toLowerCase()));
       }
       return res.json(list);
     } catch (e: any) {
@@ -1226,104 +1252,88 @@ Be concise, helpful, and professional.`;
     if (!usernameOrEmail) {
       return res.status(400).json({ message: 'Username or email is required.' });
     }
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required.' });
+    }
 
     const cleanInput = usernameOrEmail.trim();
 
-    if (role === 'Faculty') {
-      return res.json({
-        token: 'jwt-fac-' + Date.now(),
-        user: {
-          id: 'fac_1',
-          name: cleanInput.includes('@') ? cleanInput.split('@')[0] : cleanInput,
-          email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@university.edu`,
-          department: 'Academic Department',
-          role: 'Faculty'
-        }
-      });
-    } else if (role === 'Placement Faculty') {
-      return res.json({
-        token: 'jwt-placement-' + Date.now(),
-        user: {
-          id: 'fac_placement_1',
-          name: cleanInput.includes('@') ? cleanInput.split('@')[0] : cleanInput,
-          email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@university.edu`,
-          role: 'Placement Faculty'
-        }
-      });
-    } else {
-      // Student role - Fetch exact student document using Register Number
-      let studentDoc = null;
-
+    if (role === 'Faculty' || role === 'Placement Faculty') {
+      let faculty: any = null;
       if (db) {
-        studentDoc = await db.collection('students').findOne({
+        faculty = await db.collection('faculty').findOne({
           $or: [
-            { registerNumber: { $regex: new RegExp(`^${cleanInput}$`, 'i') } },
-            { username: { $regex: new RegExp(`^${cleanInput}$`, 'i') } },
-            { email: { $regex: new RegExp(`^${cleanInput}$`, 'i') } }
+            { email: cleanInput.toLowerCase() },
+            { facultyId: cleanInput },
+            { username: cleanInput.toLowerCase() }
           ]
         });
+      }
 
-        if (!studentDoc) {
-          const datasets = await db.collection('datasets').find({}).toArray();
-          for (const ds of datasets) {
-            const rows = ds.rows || ds.dataPreview || [];
-            const matchingRow = rows.find((r: any) => {
-              const reg = String(
-                r['Register Number'] || r['registerNumber'] || r['Reg No'] || r['RegNo'] || r['Roll No'] || r['username'] || ''
-              ).trim();
-              return reg.toLowerCase() === cleanInput.toLowerCase();
-            });
+      if (!faculty) {
+        return res.status(401).json({ success: false, message: 'Incorrect role or credentials.' });
+      }
 
-            if (matchingRow) {
-              studentDoc = normalizeServerRowToStudent(matchingRow);
-              await db.collection('students').updateOne(
-                { registerNumber: studentDoc.registerNumber },
-                { $set: studentDoc },
-                { upsert: true }
-              );
-              break;
-            }
-          }
+      // Strict role check
+      if (faculty.role !== role) {
+        return res.status(401).json({ success: false, message: 'Incorrect role or credentials.' });
+      }
+
+      // Password check
+      let isPasswordValid = false;
+      if (faculty.password) {
+        if (faculty.password.startsWith('$2a$') || faculty.password.startsWith('$2b$')) {
+          const bcrypt = await import('bcryptjs');
+          isPasswordValid = await bcrypt.default.compare(password, faculty.password);
+        } else {
+          isPasswordValid = faculty.password === password;
         }
       }
-
-      if (!studentDoc) {
-        studentDoc = inMemoryDB.students.find((s: any) =>
-          s.registerNumber?.toLowerCase() === cleanInput.toLowerCase() ||
-          s.username?.toLowerCase() === cleanInput.toLowerCase() ||
-          s.email?.toLowerCase() === cleanInput.toLowerCase()
-        );
+      if (!isPasswordValid) {
+        return res.status(401).json({ success: false, message: 'Incorrect password. Please try again.' });
       }
 
-      if (!studentDoc) {
-        for (const ds of (inMemoryDB.datasets || [])) {
-          const rows = ds.rows || ds.dataPreview || [];
-          const matchingRow = rows.find((r: any) => {
-            const reg = String(
-              r['Register Number'] || r['registerNumber'] || r['Reg No'] || r['RegNo'] || r['Roll No'] || r['username'] || r['Student Name'] || ''
-            ).trim();
-            return reg.toLowerCase() === cleanInput.toLowerCase() ||
-                   (r['Student Name'] && String(r['Student Name']).trim().toLowerCase() === cleanInput.toLowerCase());
-          });
+      const facultyEmail = faculty.email;
+      const facultyRole = faculty.role;
+      const facultyName = faculty.fullName || faculty.name || cleanInput;
 
-          if (matchingRow) {
-            studentDoc = normalizeServerRowToStudent(matchingRow);
-            inMemoryDB.students.push(studentDoc);
-            break;
-          }
-        }
-      }
+      const secret = process.env.JWT_SECRET || 'secret_key';
+      const token = jwt.sign({ id: faculty._id || faculty.id, role: facultyRole, email: facultyEmail }, secret, { expiresIn: '7d' });
+      const userPayload = {
+        id: faculty.id || String(faculty._id),
+        name: facultyName,
+        email: facultyEmail,
+        department: faculty.department || 'Academic Department',
+        role: facultyRole,
+        avatarUrl: ''
+      };
 
-      if (!studentDoc) {
-        return res.status(401).json({
-          message: `No student record found for Register Number "${cleanInput}". Faculty must upload the dataset first.`
+      // One-time verification check
+      if (faculty.emailVerified === true) {
+        return res.json({
+          success: true,
+          requireOtp: false,
+          token,
+          role: facultyRole,
+          user: userPayload,
+          message: 'Authenticated successfully!'
         });
       }
 
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      serverOtpStore.set(facultyEmail, { code: generatedOtp, expiresAt: Date.now() + 10 * 60 * 1000, user: userPayload, role: facultyRole, token });
+
+      await sendVerificationOTPEmail(facultyEmail, generatedOtp).catch(() => {});
+
       return res.json({
-        token: `jwt-student-${studentDoc.registerNumber}-${Date.now()}`,
-        user: studentDoc
+        success: true,
+        requireOtp: true,
+        email: facultyEmail,
+        role: facultyRole,
+        message: `A 6-digit verification code has been sent to ${facultyEmail}.`
       });
+    } else {
+      return res.status(401).json({ success: false, message: 'Incorrect role or credentials.' });
     }
   });
 
@@ -1335,15 +1345,15 @@ Be concise, helpful, and professional.`;
 
       const cleanEmail = String(email).trim().toLowerCase();
       const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+      const expiresAt = Date.now() + 10 * 60 * 1000;
 
-      serverOtpStore.set(cleanEmail, { code: generatedOtp, expiresAt });
+      const existing = serverOtpStore.get(cleanEmail);
+      serverOtpStore.set(cleanEmail, { code: generatedOtp, expiresAt, ...existing });
 
       await sendVerificationOTPEmail(cleanEmail, generatedOtp);
 
       return res.json({
         success: true,
-        otp: generatedOtp,
         message: `A 6-digit verification code has been sent to ${cleanEmail}.`
       });
     } catch (e: any) {
@@ -1351,7 +1361,7 @@ Be concise, helpful, and professional.`;
     }
   });
 
-  app.post('/api/auth/verify-login-otp', (req, res) => {
+  app.post('/api/auth/verify-login-otp', async (req, res) => {
     try {
       const { email, otp } = req.body;
       if (!email || !otp) return res.status(400).json({ message: 'Email and OTP code are required.' });
@@ -1373,8 +1383,19 @@ Be concise, helpful, and professional.`;
         return res.status(400).json({ message: 'Invalid verification code. Please enter the exact 6-digit code sent to your email.' });
       }
 
+      // Mark emailVerified = true in DB
+      if (db) {
+        await db.collection('faculty').updateOne({ email: cleanEmail }, { $set: { emailVerified: true } });
+      }
+
       serverOtpStore.delete(cleanEmail);
-      return res.json({ success: true, message: 'Gmail identity verified successfully!' });
+      return res.json({
+        success: true,
+        token: record.token || `jwt-fac-${Date.now()}`,
+        user: record.user || { name: cleanEmail.split('@')[0], email: cleanEmail, role: record.role || 'Faculty' },
+        role: record.role || 'Faculty',
+        message: 'Identity verified successfully!'
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message || 'OTP Verification failed.' });
     }
@@ -1392,13 +1413,12 @@ Be concise, helpful, and professional.`;
       serverOtpStore.set(`reset_${cleanKey}`, { code: generatedOtp, expiresAt });
 
       if (cleanKey.includes('@')) {
-        await sendVerificationOTPEmail(cleanKey, generatedOtp);
+        await sendVerificationOTPEmail(cleanKey, generatedOtp).catch(() => {});
       }
 
       return res.json({
         success: true,
-        otp: generatedOtp,
-        message: `A secure 6-digit OTP verification code (${generatedOtp}) has been dispatched to ${cleanKey}.`
+        message: `A secure 6-digit OTP verification code has been dispatched to ${cleanKey}.`
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -1432,6 +1452,18 @@ Be concise, helpful, and professional.`;
     }
   });
 
+  // GET Current User Endpoint
+  app.get('/api/auth/me', async (req, res) => {
+    let token = req.headers.authorization;
+    if (!token) return res.status(401).json({ message: 'Access Denied: No token provided.' });
+    if (token.startsWith('Bearer ')) token = token.slice(7).trim();
+
+    return res.json({
+      success: true,
+      message: 'Token active.'
+    });
+  });
+
   // Dedicated Static Routes for Privacy Policy & Terms of Service (Google OAuth Compliance)
   app.get(['/privacy', '/privacy-policy'], (req, res) => {
     const privacyPath = path.join(process.cwd(), 'public', 'privacy.html');
@@ -1458,8 +1490,20 @@ Be concise, helpful, and professional.`;
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      const nextPort = PORT + 1;
+      console.warn(`⚠️ Port ${PORT} in use, retrying on http://localhost:${nextPort}...`);
+      app.listen(nextPort, '0.0.0.0', () => {
+        console.log(`🚀 Server running on http://localhost:${nextPort}`);
+      });
+    } else {
+      console.error('Server listener error:', err);
+    }
   });
 }
 

@@ -163,9 +163,19 @@ function getStudentInsights(student) {
 exports.getAllStudents = async (req, res) => {
   try {
     const filter = {};
-    if (req.query.uploadedBy) {
-      filter.uploadedBy = req.query.uploadedBy.trim();
+    const userRole = req.user?.role;
+    const userEmail = req.user?.email || req.user?.id;
+
+    if (userRole === "Faculty") {
+      filter.$or = [
+        { uploadedBy: new RegExp(`^${userEmail}$`, 'i') },
+        { facultyId: req.user?.id },
+        { uploadedBy: req.user?.id }
+      ];
+    } else if (req.query.uploadedBy) {
+      filter.uploadedBy = new RegExp(`^${req.query.uploadedBy.trim()}$`, 'i');
     }
+
     const students = await Student.find(filter).sort({ createdAt: -1 });
     return res.status(200).json(students);
   } catch (error) {

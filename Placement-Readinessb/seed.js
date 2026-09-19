@@ -132,6 +132,14 @@ async function seedDatabase() {
         await Faculty.create(fac);
       }
       console.log('🌱 Seeded default faculty into MongoDB Atlas');
+    } else {
+      // Ensure DEFAULT_FACULTY exist and are updated
+      for (const fac of DEFAULT_FACULTY) {
+        const existing = await Faculty.findOne({ email: fac.email.toLowerCase() });
+        if (!existing) {
+          await Faculty.create(fac);
+        }
+      }
     }
 
     const companyCount = await Company.countDocuments();
