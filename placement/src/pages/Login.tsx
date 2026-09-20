@@ -44,7 +44,7 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
     clearMessages();
     
     if (!usernameOrEmail.trim()) {
-      setErrorMsg(`Please enter your ${role === 'Student' ? 'username' : 'registered email'}.`);
+      setErrorMsg('Please enter your registered email address.');
       return;
     }
     if (!password) {
@@ -60,7 +60,15 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
         roleSelected: role
       });
 
-      // Secure local caching after successful login with email & password
+      if (result.requireOtp) {
+        setPendingResult(result);
+        setInfoMsg(result.message || `A 6-digit verification code has been sent to ${result.email || usernameOrEmail}.`);
+        setFlow('verify_gmail_otp');
+        setLoading(false);
+        return;
+      }
+
+      // Secure local caching after successful login
       localStorage.setItem('auth_user', JSON.stringify(result.user));
       localStorage.setItem('auth_role', result.role);
       localStorage.setItem('auth_token', result.token || '');
@@ -88,19 +96,23 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
 
     setLoading(true);
     try {
-      const targetEmail = pendingResult?.user?.email || usernameOrEmail.trim();
-      await verifyLoginOTP(targetEmail, gmailOtpValue);
+      const targetEmail = pendingResult?.user?.email || pendingResult?.email || usernameOrEmail.trim();
+      const verifiedResult = await verifyLoginOTP(targetEmail, gmailOtpValue);
+
+      const finalUser = verifiedResult.user || pendingResult?.user;
+      const finalRole = verifiedResult.role || pendingResult?.role || role;
+      const finalToken = verifiedResult.token || pendingResult?.token || '';
 
       // Secure local caching after successful OTP verification
-      localStorage.setItem('auth_user', JSON.stringify(pendingResult.user));
-      localStorage.setItem('auth_role', pendingResult.role);
-      localStorage.setItem('auth_token', pendingResult.token || '');
+      localStorage.setItem('auth_user', JSON.stringify(finalUser));
+      localStorage.setItem('auth_role', finalRole);
+      localStorage.setItem('auth_token', finalToken);
 
       setInfoMsg('Gmail Verified successfully! Opening dashboard...');
       setTimeout(() => {
         setLoading(false);
-        onLoginSuccess(pendingResult.user, pendingResult.role);
-      }, 1000);
+        onLoginSuccess(finalUser, finalRole);
+      }, 800);
     } catch (err: any) {
       setLoading(false);
       setErrorMsg(err.message || 'Gmail OTP Verification failed. Please check the code.');
@@ -171,26 +183,22 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-50/90 flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 font-sans overflow-hidden">
-      {/* College Background Watermark */}
-      <WatermarkBackground opacity={0.07} />
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-100 via-blue-50/80 to-slate-200/90 flex flex-col justify-center items-center py-10 px-4 sm:px-6 lg:px-8 font-sans overflow-hidden">
+      {/* Soft Ambient Background Radial Glows */}
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      <WatermarkBackground opacity={0.04} />
 
       {/* College & Portal Brand Header */}
-      <div className="relative z-10 mb-6 text-center space-y-2">
-        <AdithyaLogo size="lg" className="mx-auto mb-2" />
-        <h1 className="text-sm uppercase font-extrabold tracking-widest text-blue-700 font-sans">
-          Adithya Institute of Technology
+      <div className="relative z-10 mb-5 flex flex-col items-center text-center space-y-2">
+        <AdithyaLogo size="md" className="mx-auto" />
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 font-sans leading-tight">
+          Placement Readiness Analyzer
         </h1>
-        <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-          Placement Readiness Portal
-        </h2>
-        <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
-          Placement Analytics, Student Readiness Score & Company Drive Management
-        </p>
       </div>
 
       {/* Main Authentication Card */}
-      <div className="relative z-10 w-full max-w-md bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-3xl shadow-xl p-8 space-y-6">
+      <div className="relative z-10 w-full max-w-md bg-white/85 backdrop-blur-xl border border-white/60 rounded-3xl shadow-2xl shadow-blue-900/10 p-8 space-y-6">
         
         {/* Status Messaging */}
         {errorMsg && (
@@ -229,7 +237,7 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
               </select>
             </div>
 
-            {/* Email / Username field */}
+            {/* Email field */}
             <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700 tracking-wider uppercase">
                 Registered Email Address
@@ -242,7 +250,7 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
                   type="email"
                   value={usernameOrEmail}
                   onChange={(e) => setUsernameOrEmail(e.target.value)}
-                  placeholder="officer@university.edu"
+                  placeholder={role === 'Placement Faculty' ? 'placement@adithyatech.edu.in' : 'faculty@adithyatech.edu.in'}
                   className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
                   required
                 />
@@ -506,8 +514,12 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
                   clearMessages();
                   setLoading(true);
                   const targetEmail = pendingResult?.user?.email || usernameOrEmail.trim();
-                  const res = await sendVerificationOTP(targetEmail);
-                  setInfoMsg(res?.message || `New 6-digit code (${res?.otp || '123456'}) sent to ${targetEmail}.`);
+                  try {
+                    const res = await sendVerificationOTP(targetEmail);
+                    setInfoMsg(res?.message || `A new 6-digit verification code has been sent to ${targetEmail}.`);
+                  } catch (err: any) {
+                    setErrorMsg(err.message || 'Failed to resend verification code.');
+                  }
                   setLoading(false);
                 }}
                 className="text-xs font-semibold text-blue-600 hover:underline focus:outline-none"

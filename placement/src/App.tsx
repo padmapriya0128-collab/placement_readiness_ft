@@ -11,6 +11,7 @@ import ProfilePage from './pages/ProfilePage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import { getStudentProfileByRegisterNumber } from './api/students';
+import { getCurrentUserSession, logoutUser } from './api/auth';
 
 export default function App() {
   // Authentication & Session States
@@ -39,7 +40,7 @@ export default function App() {
     setCurrentPath(path.toLowerCase());
   };
 
-  // App Notifications log (start completely empty according to strict requirements)
+  // App Notifications log
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem('app_notifications');
     return saved ? JSON.parse(saved) : [];
@@ -49,20 +50,45 @@ export default function App() {
     localStorage.setItem('app_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  // Load persistent session from local storage if available
+  // Load persistent session only if token is validly verified with backend
   useEffect(() => {
+    const cachedToken = localStorage.getItem('auth_token');
     const cachedUser = localStorage.getItem('auth_user');
     const cachedRole = localStorage.getItem('auth_role');
 
-    if (cachedUser && cachedRole) {
-      setCurrentUser(JSON.parse(cachedUser));
-      setCurrentRole(cachedRole as any);
-
-      // Select appropriate initial tab based on role
-      if (cachedRole === 'Faculty') setActiveTab('students');
-      else if (cachedRole === 'Placement Faculty') setActiveTab('company-requirements');
-      else setActiveTab('student-dashboard');
+    if (!cachedToken || !cachedUser || !cachedRole) {
+      localStorage.removeItem('auth_user');
+      localStorage.removeItem('auth_role');
+      localStorage.removeItem('auth_token');
+      setCurrentUser(null);
+      setCurrentRole(null);
+      return;
     }
+
+    getCurrentUserSession(cachedToken).then(session => {
+      if (session && session.success) {
+        const validatedUser = session.user || JSON.parse(cachedUser);
+        const validatedRole = session.role || cachedRole;
+        setCurrentUser(validatedUser);
+        setCurrentRole(validatedRole as any);
+
+        if (validatedRole === 'Faculty') setActiveTab('students');
+        else if (validatedRole === 'Placement Faculty') setActiveTab('company-requirements');
+        else setActiveTab('student-dashboard');
+      } else {
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('auth_role');
+        localStorage.removeItem('auth_token');
+        setCurrentUser(null);
+        setCurrentRole(null);
+      }
+    }).catch(() => {
+      localStorage.removeItem('auth_user');
+      localStorage.removeItem('auth_role');
+      localStorage.removeItem('auth_token');
+      setCurrentUser(null);
+      setCurrentRole(null);
+    });
   }, []);
 
   // Ensure student profile is always updated with exact database record using Register Number
@@ -99,10 +125,15 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    const token = localStorage.getItem('auth_token');
+    logoutUser(token || undefined);
+
     localStorage.removeItem('auth_user');
     localStorage.removeItem('auth_role');
+    localStorage.removeItem('auth_token');
     setCurrentUser(null);
     setCurrentRole(null);
+    window.history.pushState({}, '', '/');
   };
 
   const addNotification = (
