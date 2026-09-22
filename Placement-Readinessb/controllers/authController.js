@@ -2,7 +2,7 @@ const Student = require("../models/Student");
 const Faculty = require("../models/Faculty");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { sendMailViaNodemailer } = require("../utils/nodemailerEmail");
+const { sendEmail } = require("../utils/resendEmail");
 
 // In-memory OTP cache for multi-step verification across requests
 // Key: `verify_${email}` or `reset_${email}`
@@ -13,6 +13,129 @@ const otpCache = new Map();
 function generateSecureOTP() {
   return crypto.randomInt(100000, 1000000).toString();
 }
+
+// 0. User Registration Endpoint with Single Placement Officer Restriction
+exports.register = async (req, res) => {
+  try {
+    const { fullName, email, password, department, role } = req.body;
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const pass = (password || "").trim();
+    const name = (fullName || "").trim();
+    const dept = (department || "AI&DS").trim();
+    const requestedRole = (role || "Faculty").trim();
+
+    if (!name || !cleanEmail || !pass) {
+      return res.status(400).json({
+        success: false,
+        message: "Full Name, Email, and Password are required for registration."
+      });
+    }
+
+    if (pass.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long."
+      });
+    }
+
+    // 1. STRICT SINGLE PLACEMENT OFFICER RESTRICTION (Requirement 1)
+    const isOfficerRequest = requestedRole === "Placement Officer" || requestedRole === "Placement Faculty" || cleanEmail.includes("placement");
+    if (isOfficerRequest) {
+      // Find if ANY active Placement Officer account exists in MongoDB
+      const existingOfficer = await Faculty.findOne({
+        $or: [
+          { role: "Placement Officer" },
+          { role: "Placement Faculty" },
+          { email: "placement@adithyatech.edu.in" }
+        ]
+      });
+
+      if (existingOfficer && existingOfficer.email.toLowerCase() !== cleanEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "STRICT RESTRICTION: Only ONE email address is permitted to hold the Placement Officer role in the system. Secondary Placement Officer registration is blocked."
+        });
+      }
+    }
+
+    // 2. Check duplicate registration
+    const existingUser = await Faculty.findOne({ email: cleanEmail });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "An account with this email address is already registered. Please sign in instead."
+      });
+    }
+
+    // 3. Register user with emailVerified: false (Req 2: OTP required on first verification)
+    const finalRole = (requestedRole === "Placement Officer" || cleanEmail === "placement@adithyatech.edu.in") ? "Placement Faculty" : requestedRole;
+
+    const newFaculty = new Faculty({
+      fullName: name,
+      name: name,
+      email: cleanEmail,
+      password: pass,
+      department: dept,
+      role: finalRole,
+      emailVerified: false
+    });
+
+    await newFaculty.save();
+
+    const secret = process.env.JWT_SECRET || "secret_key";
+    const token = jwt.sign({ id: newFaculty._id, role: newFaculty.role, email: newFaculty.email }, secret, { expiresIn: "7d" });
+    const userPayload = {
+      id: newFaculty.id || newFaculty._id.toString(),
+      name: newFaculty.fullName || newFaculty.name,
+      email: newFaculty.email,
+      department: newFaculty.department,
+      role: newFaculty.role,
+      avatarUrl: ""
+    };
+
+    const generatedOtp = generateSecureOTP();
+    otpCache.set(`verify_${cleanEmail}`, {
+      otp: generatedOtp,
+      expires: Date.now() + 10 * 60 * 1000,
+      attempts: 0,
+      token,
+      role: newFaculty.role,
+      user: userPayload
+    });
+
+    try {
+      await sendEmail({
+        to: cleanEmail,
+        subject: "Verification Code - Placement Readiness Portal",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 16px; max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0;">
+            <h2 style="color: #1e3a8a; margin-top: 0;">Adithya Institute of Technology</h2>
+            <h3 style="color: #0f172a;">Placement Portal Registration Verification</h3>
+            <p style="color: #475569; font-size: 14px;">Your 6-digit one-time verification code to verify your account is:</p>
+            <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; background: #eff6ff; padding: 16px; border-radius: 12px; text-align: center; margin: 20px 0;">
+              ${generatedOtp}
+            </div>
+            <p style="color: #64748b; font-size: 12px;">This code is valid for 10 minutes. Once verified, subsequent logins will not require an OTP.</p>
+          </div>
+        `
+      });
+    } catch (mailErr) {
+      console.warn("⚠️ Nodemailer dispatch notice:", mailErr.message);
+    }
+
+    return res.status(201).json({
+      success: true,
+      requireOtp: true,
+      email: cleanEmail,
+      role: newFaculty.role,
+      message: `Registration successful! A 6-digit verification code has been sent to ${cleanEmail}.`
+    });
+
+  } catch (error) {
+    console.error("Registration error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 // 1. Unified Login Endpoint
 exports.login = async (req, res) => {
@@ -31,7 +154,7 @@ exports.login = async (req, res) => {
 
     const secret = process.env.JWT_SECRET || "secret_key";
 
-    if (roleSelected === "Faculty" || roleSelected === "Placement Faculty") {
+    if (roleSelected === "Faculty" || roleSelected === "Placement Faculty" || roleSelected === "Placement Officer") {
       // Find faculty in DB
       let faculty = await Faculty.findOne({
         $or: [
@@ -57,12 +180,19 @@ exports.login = async (req, res) => {
         });
       }
 
-      // 2. Strict Role Match Verification (Requirement 4)
-      if (faculty.role !== roleSelected) {
+      // 2. Strict Role Match Verification (Requirement 1 & 4)
+      const isOfficerRole = roleSelected === "Placement Officer" || roleSelected === "Placement Faculty";
+      const isUserOfficer = faculty.role === "Placement Faculty" || faculty.role === "Placement Officer" || faculty.email === "placement@adithyatech.edu.in";
+      
+      if (isOfficerRole && !isUserOfficer) {
         return res.status(401).json({
           success: false,
-          message: "Incorrect role or credentials."
+          message: "Account is not authorized for Placement Officer role."
         });
+      }
+
+      if (roleSelected === "Faculty" && isUserOfficer) {
+        // Faculty login selected for Placement Officer account
       }
 
       const token = jwt.sign({ id: faculty._id, role: faculty.role, email: faculty.email }, secret, { expiresIn: "7d" });
@@ -75,7 +205,7 @@ exports.login = async (req, res) => {
         avatarUrl: ""
       };
 
-      // 3. One-Time Email Verification Check (Requirement 1)
+      // 3. One-Time Email Verification Check (Requirement 2: Direct login for verified users!)
       if (faculty.emailVerified === true) {
         console.log(`[DIRECT LOGIN] Verified account ${faculty.email} logging in directly without OTP.`);
         return res.status(200).json({
@@ -104,7 +234,7 @@ exports.login = async (req, res) => {
       console.log(`[FIRST-TIME LOGIN OTP DISPATCH] Transmitted 6-digit OTP code to ${faculty.email}`);
 
       try {
-        await sendMailViaNodemailer({
+        await sendEmail({
           to: faculty.email,
           subject: "First-Time Verification Code - Placement Readiness Portal",
           html: `
@@ -191,7 +321,7 @@ exports.sendVerificationOTP = async (req, res) => {
     console.log(`[RESEND OTP] Generated new 6-digit OTP code for ${cleanEmail}`);
 
     try {
-      await sendMailViaNodemailer({
+      await sendEmail({
         to: cleanEmail,
         subject: "Verification Code - Placement Readiness Portal",
         html: `
@@ -327,7 +457,7 @@ exports.forgotPassword = async (req, res) => {
 
     if (input.includes("@")) {
       try {
-        await sendMailViaNodemailer({
+        await sendEmail({
           to: input,
           subject: "Password Reset Verification Code - Placement Portal",
           html: `

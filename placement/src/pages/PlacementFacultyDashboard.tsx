@@ -201,13 +201,6 @@ export default function PlacementFacultyDashboard({
   const [appYearFilter, setAppYearFilter] = useState('All');
   const [appCgpaMin, setAppCgpaMin] = useState<number>(0);
 
-  // Hide Applications tab for Placement Officer and fallback to company-requirements
-  useEffect(() => {
-    if (activeTab === 'applications') {
-      setActiveTab('company-requirements');
-    }
-  }, [activeTab, setActiveTab]);
-
   // Nodemailer Email Test State
   const [testEmailInput, setTestEmailInput] = useState(user?.email || 'placement@adithya.edu.in');
   const [testEmailLoading, setTestEmailLoading] = useState(false);
@@ -657,6 +650,8 @@ export default function PlacementFacultyDashboard({
 
         </div>
       )}
+
+
 
       {/* 4. COMPANY REQUIREMENTS MODULE (CORE MODULE) */}
       {activeTab === 'company-requirements' && (

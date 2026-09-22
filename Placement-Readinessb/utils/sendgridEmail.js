@@ -1,8 +1,8 @@
-const nodemailerEmail = require('./nodemailerEmail');
+const resendEmail = require('./resendEmail');
 
 module.exports = {
-  sendMailViaSendGrid: nodemailerEmail.sendMailViaNodemailer,
-  sendPlacementDriveEmail: nodemailerEmail.sendPlacementDriveEmail,
-  sendTestEmail: nodemailerEmail.sendTestEmail
+  sendMailViaSendGrid: resendEmail.sendEmail,
+  sendPlacementDriveEmail: resendEmail.sendPlacementDriveEmail,
+  sendTestEmail: resendEmail.sendTestEmail
 };
 

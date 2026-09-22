@@ -254,7 +254,10 @@ exports.createStudent = async (req, res) => {
       strengths: insights.strengths,
       weaknesses: insights.weaknesses,
       skillGap: insights.skillGap,
-      recommendations: insights.recommendations
+      recommendations: insights.recommendations,
+      uploadedBy: String(body.uploadedBy || req.user?.email || "Faculty").trim(),
+      createdBy: String(body.createdBy || req.user?.email || "Faculty").trim(),
+      faculty: req.user?.id || body.faculty
     });
 
     return res.status(201).json(newStudent);
@@ -527,7 +530,9 @@ exports.importConfirm = async (req, res) => {
         internships: internships,
         projects: projects,
         placementStatus: String(mapped.placementStatus || "Eligible").trim(),
-        uploadedBy: String(uploadedBy || req.user?.email || "Faculty").trim()
+        uploadedBy: String(uploadedBy || req.user?.email || "Faculty").trim(),
+        createdBy: String(uploadedBy || req.user?.email || "Faculty").trim(),
+        faculty: req.user?.id
       };
 
       studentDoc.readinessScore = calculateReadinessScore(studentDoc);

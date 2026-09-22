@@ -22,7 +22,8 @@ import {
   Award,
   User,
   Briefcase,
-  Send
+  Send,
+  Filter
 } from 'lucide-react';
 
 interface SidebarProps {

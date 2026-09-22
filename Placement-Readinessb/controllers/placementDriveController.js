@@ -1,5 +1,5 @@
 const PlacementDrive = require("../models/PlacementDrive");
-const { sendPlacementDriveEmail, sendTestEmail } = require("../utils/nodemailerEmail");
+const { sendPlacementDriveEmail, sendTestEmail } = require("../utils/resendEmail");
 
 exports.getPlacementDrives = async (req, res) => {
   try {
@@ -104,7 +104,7 @@ exports.publishPlacementDrive = async (req, res) => {
     return res.status(201).json({
       success: true,
       drive: newDrive,
-      message: `Placement drive published successfully! Nodemailer dispatched ${sentCount} emails (${failedCount} failed).`
+      message: `Placement drive published successfully! Resend API dispatched ${sentCount} emails (${failedCount} failed).`
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

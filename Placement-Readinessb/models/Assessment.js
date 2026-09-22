@@ -8,6 +8,7 @@ const assessmentSchema = new mongoose.Schema({
   maxMarks: { type: Number, default: 100 },
   averageScore: { type: Number, default: 0 },
   createdBy: { type: String, default: "Faculty" },
+  facultyId: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
   scores: [{
     studentId: { type: String },
     studentName: { type: String },

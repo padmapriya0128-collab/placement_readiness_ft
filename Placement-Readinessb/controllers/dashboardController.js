@@ -4,9 +4,9 @@ exports.getDashboard = async (req, res) => {
 
     try {
 
-        const students = await Student.find({
-            faculty: req.user.id
-        });
+        const isOfficer = req.user?.role === "Placement Officer" || req.user?.role === "Placement Faculty" || req.user?.email === "placement@adithyatech.edu.in";
+        const query = isOfficer ? {} : { faculty: req.user.id };
+        const students = await Student.find(query);
 
         const totalStudents = students.length;
 

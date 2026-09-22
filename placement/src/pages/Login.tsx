@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, Lock, User, Eye, EyeOff, Loader2, KeyRound, GraduationCap } from 'lucide-react';
-import { loginUser, requestPasswordReset, verifyOTPAndReset, sendVerificationOTP, verifyLoginOTP } from '../api/auth';
+import { ShieldCheck, Mail, Lock, User, Eye, EyeOff, Loader2, KeyRound, GraduationCap, UserPlus } from 'lucide-react';
+import { loginUser, registerUser, requestPasswordReset, verifyOTPAndReset, sendVerificationOTP, verifyLoginOTP } from '../api/auth';
 import WatermarkBackground from '../components/WatermarkBackground';
 import AdithyaLogo from '../components/AdithyaLogo';
 
@@ -18,8 +18,15 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Flow control states: 'login' | 'forgot' | 'otp' | 'verify_gmail_otp'
-  const [flow, setFlow] = useState<'login' | 'forgot' | 'otp' | 'verify_gmail_otp'>('login');
+  // Registration States
+  const [regFullName, setRegFullName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regDepartment, setRegDepartment] = useState('AI&DS');
+  const [regRole, setRegRole] = useState<'Faculty' | 'Placement Officer'>('Faculty');
+
+  // Flow control states: 'login' | 'register' | 'forgot' | 'otp' | 'verify_gmail_otp'
+  const [flow, setFlow] = useState<'login' | 'register' | 'forgot' | 'otp' | 'verify_gmail_otp'>('login');
   const [pendingResult, setPendingResult] = useState<any>(null);
   const [gmailOtpValue, setGmailOtpValue] = useState('');
 
@@ -82,6 +89,45 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
     } catch (err: any) {
       setLoading(false);
       setErrorMsg(err.message || 'Authentication failed. Please verify your credentials and role.');
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
+
+    if (!regFullName.trim()) {
+      setErrorMsg('Please enter your full name.');
+      return;
+    }
+    if (!regEmail.trim()) {
+      setErrorMsg('Please enter your email address.');
+      return;
+    }
+    if (!regPassword || regPassword.length < 6) {
+      setErrorMsg('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await registerUser({
+        fullName: regFullName.trim(),
+        email: regEmail.trim(),
+        password: regPassword,
+        department: regDepartment,
+        role: regRole
+      });
+
+      setPendingResult(result);
+      setInfoMsg(result.message || `A 6-digit verification code has been dispatched to ${regEmail.trim()}.`);
+      setUsernameOrEmail(regEmail.trim());
+      setFlow('verify_gmail_otp');
+      setLoading(false);
+
+    } catch (err: any) {
+      setLoading(false);
+      setErrorMsg(err.message || 'Registration failed. Please try again.');
     }
   };
 
@@ -200,6 +246,36 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
       {/* Main Authentication Card */}
       <div className="relative z-10 w-full max-w-md bg-white/85 backdrop-blur-xl border border-white/60 rounded-3xl shadow-2xl shadow-blue-900/10 p-8 space-y-6">
         
+        {/* Mode Switcher Tabs (Sign In vs Register) */}
+        {(flow === 'login' || flow === 'register') && (
+          <div className="flex bg-slate-100 p-1 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => {
+                clearMessages();
+                setFlow('login');
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                flow === 'login' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearMessages();
+                setFlow('register');
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                flow === 'register' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+        )}
+
         {/* Status Messaging */}
         {errorMsg && (
           <div className="p-3.5 bg-red-50 border border-red-100 text-red-700 text-xs font-semibold rounded-xl flex items-center space-x-2">
@@ -309,6 +385,116 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
                 </>
               ) : (
                 <span>Sign In to Dashboard</span>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* 1B. NEW USER REGISTRATION FLOW */}
+        {flow === 'register' && (
+          <form onSubmit={handleRegister} className="space-y-4">
+            
+            {/* Target Role Dropdown */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 tracking-wider uppercase">
+                Requested Role
+              </label>
+              <select
+                value={regRole}
+                onChange={(e) => {
+                  setRegRole(e.target.value as any);
+                  clearMessages();
+                }}
+                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-semibold"
+              >
+                <option value="Faculty">Placement Faculty</option>
+                <option value="Placement Officer">Placement Officer</option>
+              </select>
+            </div>
+
+            {/* Full Name */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 tracking-wider uppercase">
+                Full Name
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                  <User size={16} />
+                </span>
+                <input
+                  type="text"
+                  value={regFullName}
+                  onChange={(e) => setRegFullName(e.target.value)}
+                  placeholder="Prof. Alex Johnson"
+                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Email field */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 tracking-wider uppercase">
+                Official Email Address
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                  <Mail size={16} />
+                </span>
+                <input
+                  type="email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  placeholder={regRole === 'Placement Officer' ? 'placement@adithyatech.edu.in' : 'faculty@adithyatech.edu.in'}
+                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Password field */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 tracking-wider uppercase">
+                Password
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                  <Lock size={16} />
+                </span>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="w-full pl-10 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Submit Registration */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin mr-2" />
+                  <span>Processing Registration...</span>
+                </>
+              ) : (
+                <span className="flex items-center space-x-1.5">
+                  <UserPlus size={16} />
+                  <span>Register Account & Send Verification OTP</span>
+                </span>
               )}
             </button>
           </form>

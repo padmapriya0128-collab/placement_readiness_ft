@@ -5,6 +5,8 @@ const importHistorySchema = new mongoose.Schema({
   fileName: { type: String, required: true },
   uploadDate: { type: String, default: () => new Date().toISOString().replace('T', ' ').slice(0, 16) },
   uploadedBy: { type: String, default: "Faculty" },
+  createdBy: { type: String, default: "" },
+  facultyId: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
   totalRows: { type: Number, default: 0 },
   successfulRows: { type: Number, default: 0 },
   updatedRows: { type: Number, default: 0 },

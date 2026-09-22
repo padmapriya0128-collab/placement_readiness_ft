@@ -3,11 +3,40 @@ import { normalizeRowToStudent, isMatchingDatasetRow } from '../utils/studentNor
 
 const API_BASE_URL = (import.meta as any).env.VITE_API_URL || '/api';
 
+export async function registerUser(payload: {
+  fullName: string;
+  email: string;
+  password?: string;
+  department?: string;
+  role?: 'Faculty' | 'Placement Faculty' | 'Placement Officer';
+}) {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (response.ok) {
+    const data = await response.json();
+    return {
+      token: data.token,
+      user: data.user,
+      role: data.role || payload.role,
+      requireOtp: data.requireOtp,
+      email: data.email || payload.email,
+      message: data.message
+    };
+  } else {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || 'Registration failed.');
+  }
+}
+
 export async function loginUser(payload: {
   usernameOrEmail: string;
   password?: string;
   isFirstTime?: boolean;
-  roleSelected?: 'Faculty' | 'Placement Faculty' | 'Student';
+  roleSelected?: 'Faculty' | 'Placement Faculty' | 'Placement Officer' | 'Student';
 }) {
   const usernameOrEmail = payload.usernameOrEmail.trim();
   const password = payload.password || '';

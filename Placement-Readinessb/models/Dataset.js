@@ -9,7 +9,9 @@ const datasetSchema = new mongoose.Schema({
   missingValues: { type: Number, default: 0 },
   dataQualityScore: { type: Number, default: 95 },
   dataPreview: { type: mongoose.Schema.Types.Mixed, default: [] },
-  uploadedBy: { type: String, trim: true, index: true, default: "" }
+  uploadedBy: { type: String, trim: true, index: true, default: "" },
+  createdBy: { type: String, trim: true, index: true, default: "" },
+  facultyId: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" }
 }, {
   timestamps: true
 });

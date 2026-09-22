@@ -38,7 +38,8 @@ const studentSchema = new mongoose.Schema({
   avatarUrl: { type: String, default: "" },
   resumeScore: { type: Number, default: 75 },
   faculty: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
-  uploadedBy: { type: String, trim: true, index: true, default: "" }
+  uploadedBy: { type: String, trim: true, index: true, default: "" },
+  createdBy: { type: String, trim: true, index: true, default: "" }
 }, {
   timestamps: true
 });
