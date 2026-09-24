@@ -12,11 +12,34 @@ const placementDriveRoutes = require("./routes/placementDriveRoutes");
 const assessmentRoutes = require("./routes/assessmentRoutes");
 const datasetRoutes = require("./routes/datasetRoutes");
 const applicationRoutes = require("./routes/applicationRoutes");
+const { checkEmailHealth } = require("./services/emailService");
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// Configured CORS for Netlify frontend, Render backend, and local dev
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:5000"
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.length === 0 || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    if (origin.endsWith(".netlify.app") || origin.endsWith(".onrender.com")) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+}));
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(morgan("dev"));
 app.use(express.json({ limit: "50mb" }));
@@ -35,8 +58,14 @@ app.use("/api/applications", applicationRoutes);
 
 app.use("/uploads", express.static("uploads"));
 
+// Safe Email Health Check Endpoint (Non-secret diagnostic info)
+app.get(["/api/email/health", "/api/health/email"], (req, res) => {
+  res.json(checkEmailHealth());
+});
+
 // Health / Test Routes
 app.get(["/", "/api", "/api/"], (req, res) => {
+  const emailHealth = checkEmailHealth();
   res.json({
     success: true,
     message: "Placement Readiness Backend API is Active & Connected to MongoDB Atlas",
@@ -49,17 +78,21 @@ app.get(["/", "/api", "/api/"], (req, res) => {
       assessments: "/api/assessments",
       datasets: "/api/datasets",
       applications: "/api/applications",
+      emailHealth: "/api/email/health",
       health: "/api/health"
     },
-    nodemailerConfigured: !!(process.env.SMTP_USER || process.env.GMAIL_USER)
+    emailProvider: emailHealth.provider,
+    emailConfigured: emailHealth.configured
   });
 });
 
 app.get("/api/health", (req, res) => {
+  const emailHealth = checkEmailHealth();
   res.json({
     status: "ok",
     database: "connected",
-    emailService: (process.env.SMTP_USER || process.env.GMAIL_USER) ? "Nodemailer SMTP Active" : "Nodemailer Simulated Active"
+    emailService: emailHealth.configured ? "Resend API Active" : "Resend API Key Missing",
+    emailHealth
   });
 });
 

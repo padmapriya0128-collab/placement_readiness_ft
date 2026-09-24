@@ -163,7 +163,7 @@ export default function PublishPlacementDriveModal({
                   Placement Drive Published Successfully!
                 </h3>
                 <p className="text-xs text-emerald-800 max-w-lg mx-auto font-medium">
-                  The official Company Recruitment Announcement PDF and application link have been automatically dispatched to all eligible student email inboxes via Nodemailer.
+                  The official Company Recruitment Announcement PDF and application link have been automatically dispatched to all eligible student email inboxes via Resend.
                 </p>
               </div>
 

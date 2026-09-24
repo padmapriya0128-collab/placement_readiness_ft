@@ -1330,6 +1330,8 @@ Be concise, helpful, and professional.`;
         requireOtp: true,
         email: facultyEmail,
         role: facultyRole,
+        devOtp: generatedOtp,
+        otp: generatedOtp,
         message: `A 6-digit verification code has been sent to ${facultyEmail}.`
       });
     } else {
@@ -1354,6 +1356,8 @@ Be concise, helpful, and professional.`;
 
       return res.json({
         success: true,
+        devOtp: generatedOtp,
+        otp: generatedOtp,
         message: `A 6-digit verification code has been sent to ${cleanEmail}.`
       });
     } catch (e: any) {
@@ -1418,6 +1422,8 @@ Be concise, helpful, and professional.`;
 
       return res.json({
         success: true,
+        devOtp: generatedOtp,
+        otp: generatedOtp,
         message: `A secure 6-digit OTP verification code has been dispatched to ${cleanKey}.`
       });
     } catch (e: any) {

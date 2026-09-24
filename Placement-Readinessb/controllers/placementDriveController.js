@@ -1,5 +1,5 @@
 const PlacementDrive = require("../models/PlacementDrive");
-const { sendPlacementDriveEmail, sendTestEmail } = require("../utils/resendEmail");
+const { sendShortlistEmail, sendTestEmail } = require("../services/emailService");
 
 exports.getPlacementDrives = async (req, res) => {
   try {
@@ -20,37 +20,57 @@ exports.publishPlacementDrive = async (req, res) => {
     let failedCount = 0;
     const deliveryLogs = [];
 
-    // Dispatch real emails to each eligible student using Nodemailer
+    // Dispatch emails to each eligible student using Centralized Resend Service
     for (const student of students) {
       let status = "Sent";
       let errorReason = null;
 
-      try {
-        const mailResult = await sendPlacementDriveEmail({
-          student,
-          company,
-          registrationFormUrl,
-          pdfDataUrl
-        });
+      const studentEmail = (
+        student.email ||
+        student.studentEmail ||
+        student.contactEmail ||
+        student.emailId ||
+        (student.registerNumber ? `${student.registerNumber.toString().trim().toLowerCase()}@adithya.edu.in` : null)
+      );
 
-        if (mailResult.success) {
-          sentCount++;
-        } else {
+      if (!studentEmail || !studentEmail.includes("@")) {
+        status = "Failed";
+        errorReason = "Missing or invalid student email address";
+        failedCount++;
+      } else {
+        try {
+          const mailResult = await sendShortlistEmail({
+            to: studentEmail.trim(),
+            studentName: student.name || student.fullName || "Student",
+            registerNumber: student.registerNumber || "",
+            companyName: (company && company.name) || "Recruitment Partner",
+            jobRole: (company && company.jobRole) || "Software Trainee",
+            salaryPackage: (company && company.salaryPackage) || "As per company standards",
+            deadline: (company && company.applicationDeadline) || "As scheduled",
+            venue: (company && (company.driveVenue || company.location)) || "Campus",
+            registrationFormUrl,
+            pdfDataUrl
+          });
+
+          if (mailResult.success) {
+            sentCount++;
+          } else {
+            status = "Failed";
+            errorReason = mailResult.error || "Resend delivery failed";
+            failedCount++;
+          }
+        } catch (err) {
           status = "Failed";
-          errorReason = mailResult.error || "Failed via Nodemailer";
+          errorReason = err.message || "Email dispatch error";
           failedCount++;
         }
-      } catch (err) {
-        status = "Failed";
-        errorReason = err.message || "Email error";
-        failedCount++;
       }
 
       deliveryLogs.push({
         studentId: student.id || student.registerNumber,
         name: student.name || student.fullName,
         registerNumber: student.registerNumber,
-        email: student.email,
+        email: studentEmail || "N/A",
         department: student.department,
         cgpa: student.cgpa,
         emailStatus: status,
@@ -127,7 +147,7 @@ exports.testNodemailerEmail = async (req, res) => {
     if (!email) {
       return res.status(400).json({ success: false, message: "Target email address required" });
     }
-    const result = await sendTestEmail(email);
+    const result = await sendTestEmail({ to: email });
     return res.status(result.success ? 200 : 500).json(result);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

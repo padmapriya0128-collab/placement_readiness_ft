@@ -191,6 +191,13 @@ Adithya Institute of Technology`;
 }
 
 export async function sendVerificationOTPEmail(toEmail: string, otp: string): Promise<{ success: boolean; error?: string }> {
+  console.log(`\n==================================================`);
+  console.log(`🔑 [VERIFICATION CODE DISPATCH]`);
+  console.log(`📧 RECIPIENT: ${toEmail}`);
+  console.log(`🔢 6-DIGIT OTP CODE: ${otp}`);
+  console.log(`🕒 TIMESTAMP: ${new Date().toISOString()}`);
+  console.log(`==================================================\n`);
+
   const subject = `Your Security Verification Code - Adithya Placement Readiness Portal`;
   const textBody = `Your 6-digit verification code is: ${otp}. Enter this code to complete authentication.`;
   const htmlBody = `

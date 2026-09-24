@@ -3,12 +3,14 @@ require("dotenv").config();
 const app = require("./app");
 const connectDB = require("./config/database");
 const seedDatabase = require("./seed");
+const { validateEmailEnvironment } = require("./services/emailService");
 
 const PORT = process.env.PORT || 5000;
 
 console.log("PORT =", PORT);
 console.log("MONGODB_URI =", process.env.MONGODB_URI ? "Loaded ✅" : "Missing ❌");
 console.log("JWT_SECRET =", process.env.JWT_SECRET ? "Loaded ✅" : "Missing ❌");
+validateEmailEnvironment();
 
 async function startServer() {
   try {

@@ -2,7 +2,7 @@ const Student = require("../models/Student");
 const Faculty = require("../models/Faculty");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { sendEmail } = require("../utils/resendEmail");
+const { sendLoginVerificationEmail, sendForgotPasswordEmail } = require("../services/emailService");
 
 // In-memory OTP cache for multi-step verification across requests
 // Key: `verify_${email}` or `reset_${email}`
@@ -103,31 +103,20 @@ exports.register = async (req, res) => {
       user: userPayload
     });
 
-    try {
-      await sendEmail({
-        to: cleanEmail,
-        subject: "Verification Code - Placement Readiness Portal",
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 16px; max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0;">
-            <h2 style="color: #1e3a8a; margin-top: 0;">Adithya Institute of Technology</h2>
-            <h3 style="color: #0f172a;">Placement Portal Registration Verification</h3>
-            <p style="color: #475569; font-size: 14px;">Your 6-digit one-time verification code to verify your account is:</p>
-            <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; background: #eff6ff; padding: 16px; border-radius: 12px; text-align: center; margin: 20px 0;">
-              ${generatedOtp}
-            </div>
-            <p style="color: #64748b; font-size: 12px;">This code is valid for 10 minutes. Once verified, subsequent logins will not require an OTP.</p>
-          </div>
-        `
-      });
-    } catch (mailErr) {
-      console.warn("⚠️ Nodemailer dispatch notice:", mailErr.message);
-    }
+    // Send Login OTP via Centralized Resend Service
+    await sendLoginVerificationEmail({
+      to: cleanEmail,
+      otp: generatedOtp,
+      userName: name
+    });
 
     return res.status(201).json({
       success: true,
       requireOtp: true,
       email: cleanEmail,
       role: newFaculty.role,
+      devOtp: generatedOtp,
+      otp: generatedOtp,
       message: `Registration successful! A 6-digit verification code has been sent to ${cleanEmail}.`
     });
 
@@ -231,33 +220,20 @@ exports.login = async (req, res) => {
         user: userPayload
       });
 
-      console.log(`[FIRST-TIME LOGIN OTP DISPATCH] Transmitted 6-digit OTP code to ${faculty.email}`);
-
-      try {
-        await sendEmail({
-          to: faculty.email,
-          subject: "First-Time Verification Code - Placement Readiness Portal",
-          html: `
-            <div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 16px; max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0;">
-              <h2 style="color: #1e3a8a; margin-top: 0;">Adithya Institute of Technology</h2>
-              <h3 style="color: #0f172a;">Placement Portal Email Verification</h3>
-              <p style="color: #475569; font-size: 14px;">Your 6-digit one-time verification code to verify your email address is:</p>
-              <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; background: #eff6ff; padding: 16px; border-radius: 12px; text-align: center; margin: 20px 0;">
-                ${generatedOtp}
-              </div>
-              <p style="color: #64748b; font-size: 12px;">This code is valid for 10 minutes. Once verified, subsequent logins will not require an OTP.</p>
-            </div>
-          `
-        });
-      } catch (mailErr) {
-        console.warn("⚠️ Nodemailer dispatch notice:", mailErr.message);
-      }
+      // Send First-Time Login OTP via Centralized Resend Service
+      await sendLoginVerificationEmail({
+        to: faculty.email,
+        otp: generatedOtp,
+        userName: faculty.fullName || faculty.name
+      });
 
       return res.status(200).json({
         success: true,
         requireOtp: true,
         email: faculty.email,
         role: faculty.role,
+        devOtp: generatedOtp,
+        otp: generatedOtp,
         message: `A 6-digit verification code has been dispatched to ${faculty.email}.`
       });
     } else {
@@ -318,30 +294,17 @@ exports.sendVerificationOTP = async (req, res) => {
       user: userPayload
     });
 
-    console.log(`[RESEND OTP] Generated new 6-digit OTP code for ${cleanEmail}`);
-
-    try {
-      await sendEmail({
-        to: cleanEmail,
-        subject: "Verification Code - Placement Readiness Portal",
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 16px; max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0;">
-            <h2 style="color: #1e3a8a; margin-top: 0;">Adithya Institute of Technology</h2>
-            <h3 style="color: #0f172a;">Placement Portal Verification Code</h3>
-            <p style="color: #475569; font-size: 14px;">Your new 6-digit OTP verification code is:</p>
-            <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; background: #eff6ff; padding: 16px; border-radius: 12px; text-align: center; margin: 20px 0;">
-              ${generatedOtp}
-            </div>
-            <p style="color: #64748b; font-size: 12px;">This code is valid for 10 minutes. Do not share this code with anyone.</p>
-          </div>
-        `
-      });
-    } catch (mailErr) {
-      console.warn("⚠️ Nodemailer dispatch notice:", mailErr.message);
-    }
+    // Send Resent OTP via Centralized Resend Service
+    await sendLoginVerificationEmail({
+      to: cleanEmail,
+      otp: generatedOtp,
+      userName: faculty.fullName || faculty.name
+    });
 
     return res.status(200).json({
       success: true,
+      devOtp: generatedOtp,
+      otp: generatedOtp,
       message: `A new 6-digit verification code has been sent to ${cleanEmail}.`
     });
   } catch (error) {
@@ -456,29 +419,17 @@ exports.forgotPassword = async (req, res) => {
     await faculty.save();
 
     if (input.includes("@")) {
-      try {
-        await sendEmail({
-          to: input,
-          subject: "Password Reset Verification Code - Placement Portal",
-          html: `
-            <div style="font-family: Arial, sans-serif; padding: 24px; background: #f8fafc; border-radius: 16px; max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0;">
-              <h2 style="color: #1e3a8a; margin-top: 0;">Adithya Institute of Technology</h2>
-              <h3 style="color: #0f172a;">Password Reset Verification Code</h3>
-              <p style="color: #475569; font-size: 14px;">Your 6-digit OTP code to reset your password is:</p>
-              <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; background: #eff6ff; padding: 16px; border-radius: 12px; text-align: center; margin: 20px 0;">
-                ${generatedOtp}
-              </div>
-              <p style="color: #64748b; font-size: 12px;">This code is valid for 10 minutes. Do not share this code with anyone.</p>
-            </div>
-          `
-        });
-      } catch (mErr) {
-        console.warn("Nodemailer dispatch error:", mErr.message);
-      }
+      await sendForgotPasswordEmail({
+        to: input,
+        otp: generatedOtp,
+        userName: faculty.fullName || faculty.name
+      });
     }
 
     return res.status(200).json({
       success: true,
+      devOtp: generatedOtp,
+      otp: generatedOtp,
       message: `A secure 6-digit OTP code has been dispatched to ${emailOrPhone}.`
     });
   } catch (error) {

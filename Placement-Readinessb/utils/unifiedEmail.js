@@ -1,6 +1,8 @@
 const emailService = require('../services/emailService');
 
 module.exports = {
+  sendEmail: emailService.sendLoginVerificationEmail,
+  sendVerificationOTPEmail: emailService.sendLoginVerificationEmail,
   sendLoginVerificationEmail: emailService.sendLoginVerificationEmail,
   sendForgotPasswordEmail: emailService.sendForgotPasswordEmail,
   sendShortlistEmail: emailService.sendShortlistEmail,
