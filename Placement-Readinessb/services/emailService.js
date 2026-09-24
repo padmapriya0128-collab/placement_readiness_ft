@@ -38,11 +38,8 @@ function getSenderAddress() {
   return `Adithya Placement Cell <${envFrom}>`;
 }
 
-/**
- * Initializes the Resend client instance
- */
 function getResendClient() {
-  const apiKey = (process.env.RESEND_API_KEY || '').trim();
+  const apiKey = (process.env.RESEND_API_KEY || process.env.RESEND_KEY || '').trim();
   if (!apiKey) {
     return null;
   }

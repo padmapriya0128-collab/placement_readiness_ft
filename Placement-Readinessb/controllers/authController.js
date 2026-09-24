@@ -94,9 +94,15 @@ exports.register = async (req, res) => {
     };
 
     const generatedOtp = generateSecureOTP();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    newFaculty.loginOtp = generatedOtp;
+    newFaculty.loginOtpExpires = new Date(expiresAt);
+    await newFaculty.save();
+
     otpCache.set(`verify_${cleanEmail}`, {
       otp: generatedOtp,
-      expires: Date.now() + 10 * 60 * 1000,
+      expires: expiresAt,
       attempts: 0,
       token,
       role: newFaculty.role,
@@ -104,11 +110,15 @@ exports.register = async (req, res) => {
     });
 
     // Send Login OTP via Centralized Resend Service
-    await sendLoginVerificationEmail({
+    const emailResult = await sendLoginVerificationEmail({
       to: cleanEmail,
       otp: generatedOtp,
       userName: name
     });
+
+    if (!emailResult.success) {
+      console.warn(`[REGISTRATION EMAIL WARNING] Dispatch failed for ${cleanEmail}: ${emailResult.error}`);
+    }
 
     return res.status(201).json({
       success: true,
@@ -196,6 +206,10 @@ exports.login = async (req, res) => {
       const generatedOtp = generateSecureOTP();
       const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
+      faculty.loginOtp = generatedOtp;
+      faculty.loginOtpExpires = new Date(expiresAt);
+      await faculty.save();
+
       otpCache.set(`verify_${faculty.email.toLowerCase()}`, {
         otp: generatedOtp,
         expires: expiresAt,
@@ -206,11 +220,15 @@ exports.login = async (req, res) => {
       });
 
       // Send Login OTP via Centralized Resend Service
-      await sendLoginVerificationEmail({
+      const emailResult = await sendLoginVerificationEmail({
         to: faculty.email,
         otp: generatedOtp,
         userName: faculty.fullName || faculty.name
       });
+
+      if (!emailResult.success) {
+        console.warn(`[LOGIN EMAIL WARNING] Dispatch failed for ${faculty.email}: ${emailResult.error}`);
+      }
 
       return res.status(200).json({
         success: true,
@@ -268,9 +286,15 @@ exports.sendVerificationOTP = async (req, res) => {
     };
 
     const generatedOtp = generateSecureOTP();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    faculty.loginOtp = generatedOtp;
+    faculty.loginOtpExpires = new Date(expiresAt);
+    await faculty.save();
+
     otpCache.set(`verify_${cleanEmail}`, {
       otp: generatedOtp,
-      expires: Date.now() + 10 * 60 * 1000,
+      expires: expiresAt,
       attempts: 0,
       token,
       role: faculty.role,
@@ -278,11 +302,15 @@ exports.sendVerificationOTP = async (req, res) => {
     });
 
     // Send Resent OTP via Centralized Resend Service
-    await sendLoginVerificationEmail({
+    const emailResult = await sendLoginVerificationEmail({
       to: cleanEmail,
       otp: generatedOtp,
       userName: faculty.fullName || faculty.name
     });
+
+    if (!emailResult.success) {
+      console.warn(`[RESEND EMAIL WARNING] Dispatch failed for ${cleanEmail}: ${emailResult.error}`);
+    }
 
     return res.status(200).json({
       success: true,
@@ -293,7 +321,7 @@ exports.sendVerificationOTP = async (req, res) => {
   }
 };
 
-// 5. Verify Login OTP Code (Single-use, Marks emailVerified: true in DB)
+// 5. Verify Login OTP Code (Single-use, Checks DB & Cache)
 exports.verifyLoginOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -304,52 +332,46 @@ exports.verifyLoginOTP = async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = String(otp).trim();
 
+    const faculty = await Faculty.findOne({ email: cleanEmail });
     const cached = otpCache.get(`verify_${cleanEmail}`);
 
-    if (!cached) {
+    let isValid = false;
+
+    // Check cached session
+    if (cached && cached.otp === cleanOtp && Date.now() < cached.expires) {
+      isValid = true;
+    }
+
+    // Check database session (persists across server restarts / multi-instance deploys)
+    if (!isValid && faculty && faculty.loginOtp && faculty.loginOtp === cleanOtp) {
+      if (!faculty.loginOtpExpires || new Date() < new Date(faculty.loginOtpExpires)) {
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
       return res.status(400).json({
         success: false,
-        message: "No active verification session. Please request a new verification code."
+        message: "Invalid or expired verification code. Please check the 6-digit code sent to your email."
       });
     }
 
-    if (Date.now() > cached.expires) {
-      otpCache.delete(`verify_${cleanEmail}`);
-      return res.status(400).json({
-        success: false,
-        message: "Verification code has expired. Please click Resend OTP."
-      });
-    }
-
-    if (cached.attempts >= 5) {
-      otpCache.delete(`verify_${cleanEmail}`);
-      return res.status(400).json({
-        success: false,
-        message: "Too many failed attempts. Verification session invalidated. Please log in again."
-      });
-    }
-
-    if (cached.otp !== cleanOtp) {
-      cached.attempts = (cached.attempts || 0) + 1;
-      return res.status(400).json({
-        success: false,
-        message: "Invalid verification code. Please check the 6-digit code sent to your email."
-      });
-    }
-
-    // SUCCESS — Delete OTP from cache immediately to ensure SINGLE-USE
+    // SUCCESS — Delete OTP from cache and DB to ensure SINGLE-USE
     otpCache.delete(`verify_${cleanEmail}`);
 
-    // Set emailVerified: true in MongoDB database!
-    await Faculty.updateOne({ email: cleanEmail }, { $set: { emailVerified: true } });
+    if (faculty) {
+      faculty.loginOtp = null;
+      faculty.loginOtpExpires = null;
+      faculty.emailVerified = true;
+      await faculty.save();
+    }
 
     const secret = process.env.JWT_SECRET || "secret_key";
-    let token = cached.token;
-    let user = cached.user;
-    let role = cached.role || "Faculty";
+    let token = cached?.token;
+    let user = cached?.user;
+    let role = cached?.role || faculty?.role || "Faculty";
 
-    if (!user) {
-      const faculty = await Faculty.findOne({ email: cleanEmail });
+    if (!token || !user) {
       if (faculty) {
         token = jwt.sign({ id: faculty._id, role: faculty.role, email: faculty.email }, secret, { expiresIn: "7d" });
         role = faculty.role;

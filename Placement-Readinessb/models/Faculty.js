@@ -12,7 +12,11 @@ const facultySchema = new mongoose.Schema({
   phone: { type: String, default: "" },
   role: { type: String, default: "Faculty" }, // "Faculty" or "Placement Faculty"
   emailVerified: { type: Boolean, default: false },
-  isActive: { type: Boolean, default: true }
+  isActive: { type: Boolean, default: true },
+  loginOtp: { type: String },
+  loginOtpExpires: { type: Date },
+  resetOtp: { type: String },
+  resetOtpExpires: { type: Date }
 }, {
   timestamps: true
 });
