@@ -24,9 +24,7 @@ export async function registerUser(payload: {
       role: data.role || payload.role,
       requireOtp: data.requireOtp,
       email: data.email || payload.email,
-      message: data.message,
-      devOtp: data.devOtp || data.otp,
-      otp: data.otp || data.devOtp
+      message: data.message
     };
   } else {
     const errorData = await response.json().catch(() => ({}));
@@ -58,9 +56,7 @@ export async function loginUser(payload: {
       role: data.role || data.user?.role || roleSelected,
       requireOtp: data.requireOtp,
       email: data.email || usernameOrEmail,
-      message: data.message,
-      devOtp: data.devOtp || data.otp,
-      otp: data.otp || data.devOtp
+      message: data.message
     };
   } else {
     const errorData = await response.json().catch(() => ({}));
@@ -77,11 +73,7 @@ export async function sendVerificationOTP(email: string) {
 
   if (response.ok) {
     const data = await response.json();
-    return {
-      ...data,
-      devOtp: data.devOtp || data.otp,
-      otp: data.otp || data.devOtp
-    };
+    return data;
   } else {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.message || errorData.error || 'Failed to send verification code.');
@@ -112,11 +104,7 @@ export async function requestPasswordReset(payload: { emailOrPhone: string }) {
 
   if (response.ok) {
     const data = await response.json();
-    return {
-      ...data,
-      devOtp: data.devOtp || data.otp,
-      otp: data.otp || data.devOtp
-    };
+    return data;
   } else {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.message || errorData.error || 'Failed to dispatch password reset code.');

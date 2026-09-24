@@ -69,10 +69,7 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
 
       if (result.requireOtp) {
         setPendingResult(result);
-        const code = result.devOtp || result.otp;
-        if (code) {
-          setGmailOtpValue(code);
-        }
+        setGmailOtpValue('');
         setInfoMsg(result.message || `A 6-digit verification code has been sent to ${result.email || usernameOrEmail}.`);
         setFlow('verify_gmail_otp');
         setLoading(false);
@@ -124,10 +121,7 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
       });
 
       setPendingResult(result);
-      const code = result.devOtp || result.otp;
-      if (code) {
-        setGmailOtpValue(code);
-      }
+      setGmailOtpValue('');
       setInfoMsg(result.message || `A 6-digit verification code has been dispatched to ${regEmail.trim()}.`);
       setUsernameOrEmail(regEmail.trim());
       setFlow('verify_gmail_otp');
@@ -185,10 +179,7 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
     setLoading(true);
     try {
       const response = await requestPasswordReset({ emailOrPhone: emailOrPhone.trim() });
-      const code = response.devOtp || response.otp;
-      if (code) {
-        setOtpValue(code);
-      }
+      setOtpValue('');
       setInfoMsg(response.message || 'Verification code dispatched.');
       setTimeout(() => {
         setLoading(false);
@@ -688,19 +679,6 @@ export default function Login({ onLoginSuccess, onNavigateToPrivacy, onNavigateT
                 className="w-full text-center text-2xl font-black tracking-widest px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-blue-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-mono"
                 required
               />
-              {(pendingResult?.devOtp || pendingResult?.otp) && (
-                <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-center">
-                  <span className="text-xs text-blue-700 font-medium">Local/Dev Testing OTP: </span>
-                  <strong className="text-sm text-blue-950 font-mono font-bold tracking-widest">{pendingResult?.devOtp || pendingResult?.otp}</strong>
-                  <button
-                    type="button"
-                    onClick={() => setGmailOtpValue(pendingResult?.devOtp || pendingResult?.otp)}
-                    className="ml-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-2 py-0.5 rounded cursor-pointer transition-colors"
-                  >
-                    Auto-Fill
-                  </button>
-                </div>
-              )}
             </div>
 
             <button

@@ -115,8 +115,6 @@ exports.register = async (req, res) => {
       requireOtp: true,
       email: cleanEmail,
       role: newFaculty.role,
-      devOtp: generatedOtp,
-      otp: generatedOtp,
       message: `Registration successful! A 6-digit verification code has been sent to ${cleanEmail}.`
     });
 
@@ -194,20 +192,7 @@ exports.login = async (req, res) => {
         avatarUrl: ""
       };
 
-      // 3. One-Time Email Verification Check (Requirement 2: Direct login for verified users!)
-      if (faculty.emailVerified === true) {
-        console.log(`[DIRECT LOGIN] Verified account ${faculty.email} logging in directly without OTP.`);
-        return res.status(200).json({
-          success: true,
-          requireOtp: false,
-          token,
-          role: faculty.role,
-          user: userPayload,
-          message: "Authenticated successfully!"
-        });
-      }
-
-      // First-Time Login Email Verification Flow
+      // 3. Email Verification OTP Flow on Every Login
       const generatedOtp = generateSecureOTP();
       const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
@@ -220,7 +205,7 @@ exports.login = async (req, res) => {
         user: userPayload
       });
 
-      // Send First-Time Login OTP via Centralized Resend Service
+      // Send Login OTP via Centralized Resend Service
       await sendLoginVerificationEmail({
         to: faculty.email,
         otp: generatedOtp,
@@ -232,8 +217,6 @@ exports.login = async (req, res) => {
         requireOtp: true,
         email: faculty.email,
         role: faculty.role,
-        devOtp: generatedOtp,
-        otp: generatedOtp,
         message: `A 6-digit verification code has been dispatched to ${faculty.email}.`
       });
     } else {
@@ -303,8 +286,6 @@ exports.sendVerificationOTP = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      devOtp: generatedOtp,
-      otp: generatedOtp,
       message: `A new 6-digit verification code has been sent to ${cleanEmail}.`
     });
   } catch (error) {
@@ -428,8 +409,6 @@ exports.forgotPassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      devOtp: generatedOtp,
-      otp: generatedOtp,
       message: `A secure 6-digit OTP code has been dispatched to ${emailOrPhone}.`
     });
   } catch (error) {
